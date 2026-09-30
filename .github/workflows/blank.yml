@@ -1,0 +1,64 @@
+name: PC Virtual
+
+on:
+  workflow_dispatch:
+    inputs:
+      access_password:
+        description: "Defina uma senha para o usuário runner"
+        required: true
+        default: "123456"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configurar Senha do Usuário
+        run: |
+          echo "runner:${{ github.event.inputs.access_password }}" | sudo chpasswd
+          sudo usermod -aG sudo runner
+
+      - name: Instalar Servidor de Área de Trabalho e Ferramentas
+        run: |
+          sudo apt update
+          sudo apt install -y xfce4 xfce4-goodies tightvncserver
+
+      - name: Instalar o Ngrok
+        uses: ngrok/ngrok-action@v1
+        with:
+          auth-token: ${{ secrets.NGROK_AUTHTOKEN }}
+
+      - name: Configurar senha do VNC
+        run: |
+          mkdir -p ~/.vnc
+          echo "${{ github.event.inputs.access_password }}" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+
+      - name: Criar configuração do VNC
+        run: |
+          cat > ~/.vnc/xstartup <<'EOF'
+          #!/bin/sh
+          xrdb $HOME/.Xresources
+          startxfce4 &
+          EOF
+          chmod +x ~/.vnc/xstartup
+
+      - name: Iniciar Servidor VNC
+        run: |
+          vncserver :1 -geometry 1280x720 -depth 24
+          echo "VNC iniciado na porta 5901"
+
+      - name: Expor VNC por Ngrok
+        run: |
+          ngrok tcp 5901 > /tmp/ngrok.log 2>&1 &
+          sleep 5
+          cat /tmp/ngrok.log
+
+      - name: Manter a Máquina Ativa
+        run: |
+          echo "PC Virtual pronto!"
+          sleep infinity
